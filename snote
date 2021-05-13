@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+VERSION=0.1
+KEYCHAIN_PATH=~/.snote/snote.keychain
+ICLOUD_PATH=~/Library/Mobile\ Documents/com~apple~CloudDocs/.snote
+EDITOR=${EDITOR:-vi}
+EDITOR_DIR=$(mktemp -d -t snote.XXXXX)
+
+cleanup() {
+    rm -rf $EDITOR_DIR
+}
+
+yesno() {
+    [[ -t 0 ]] || return 0
+    local response
+    read -r -p "$1 [y/N] " response
+    [[ $response == [yY] ]] || die
+}
+
+die() {
+    echo "$@" >&2
+    cleanup
+    exit 1
+}
+
+format_note() {
+    read -d '' DATA
+    cat <<-_EOF
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NOTE</key>
+    <string>${DATA}</string>
+</dict>
+</plist>
+_EOF
+}
+
+note_exists() {
+    ( 
+        security find-generic-password -a '' -C note -s "${1}" -w "$KEYCHAIN_PATH" &>/dev/null \
+        && true
+    ) \
+    || false 
+}
+
+maybe_list_folder() {
+    read -d '' NOTES
+    (
+        [[ ! -z "$1" ]] && ( echo "$NOTES" | grep "^${1}\/" || true )
+    ) \
+    || echo "$NOTES"
+}
+
+cmd_version() {
+    echo "snote: $VERSION"
+    exit 0
+}
+
+cmd_usage() {
+    echo "snote: $VERSION"
+    echo
+    cat <<-_EOF
+    
+Usage:
+
+    $PROGRAM init [-c]
+        Initializes snote by creating a new keychain.
+        Use -c to symlink keychain to iCloud documents.
+    
+    $PROGRAM ls [folder]
+        List all folders and notes. 
+        Optionally specify a folder name to list only notes in folder.
+
+    $PROGRAM add folder/name
+        Add note. Uses \$EDITOR to provide content.
+
+    $PROGRAM get folder/name
+        Get note.
+
+    $PROGRAM edit folder/name
+        Edit note with \$EDITOR.
+
+    $PROGRAM rm folder/name
+        Remove note.
+
+
+_EOF
+    exit 0
+}
+
+cmd_init() {
+    [[ -e "${KEYCHAIN_PATH}" ]] && die "snote already initialized."
+    mkdir -p ~/.snote
+    read -r -p "Enter password: " PASSWORD
+    [[ ! -z $PASSWORD  ]] || die "No password"
+    NEW_KEYCHAIN=~/.snote/snote.keychain
+    [[ "${1}" == "-c" ]] \
+    && mkdir -p $ICLOUD_PATH \
+    && NEW_KEYCHAIN=${ICLOUD_PATH}/snote.keychain 
+    security create-keychain -p "$PASSWORD" "$NEW_KEYCHAIN" && echo "success"
+    [[ "${1}" == "-c" ]] && ln -s "$NEW_KEYCHAIN" "$KEYCHAIN_PATH"
+    exit 0
+}
+
+cmd_add() {
+    [[ "$#" -eq 0 ]] && die "Please provide a name"
+    note_exists "${1}" && die "Note already exists"
+
+    TMPFILE=$(mktemp ${EDITOR_DIR}/note.XXXXX) || exit 1
+    $EDITOR $TMPFILE
+    [[ -s $TMPFILE ]] || die "Not creating empty note."
+    NOTE=$(cat "$TMPFILE" | format_note)
+    security add-generic-password -a '' -C note -D 'secure note' -s "${1}" -w "${NOTE}" "$KEYCHAIN_PATH" \
+    || die "Note already exists"
+    rm $TMPFILE
+    note_exists "${1}" && echo "${1} has been created."
+}
+
+cmd_list() {
+    security dump-keychain "$KEYCHAIN_PATH" 2>/dev/null \
+    | grep svce \
+    | cut -d '"' -f 4 \
+    | maybe_list_folder "${1}" \
+    | tree --fromfile --noreport -C \
+    | sed '1 s/^.*$/Notes/'
+}
+
+cmd_get() {
+    [[ "$#" -eq 0 ]] && cmd_list && die
+    ITEM=${1}
+    ( 
+        security find-generic-password -C note -s "$ITEM" -w "$KEYCHAIN_PATH" 2>/dev/null \
+        || die "Item not found" 
+    ) \
+    | xxd -r -p \
+    | xmllint --xpath "//dict/string/text()" - 2>/dev/null 
+}
+
+cmd_update() {
+    [[ "$#" -eq 0 ]] && cmd_list && die
+    TMPFILE=$(mktemp ${EDITOR_DIR}/note.XXXXX) || exit 1
+    cmd_get ${1} > $TMPFILE
+    $EDITOR $TMPFILE
+    NOTE=$(cat "$TMPFILE" | format_note)
+    security add-generic-password -a '' -C note -D 'secure note' -s "${1}" -w "${NOTE}" -U "$KEYCHAIN_PATH"
+    rm $TMPFILE
+}
+
+cmd_delete() {
+    ( [[ "$#" -eq 0 ]] || ! note_exists ${1} ) \
+    && die "Note not found."
+
+    yesno "Would you like to delete note '${1}'?" \
+    && (
+        security delete-generic-password -a '' -C note -l ${1} &>/dev/null \
+        || die "Note not found"
+    ) \
+    && echo "${1} has been deleted."
+
+}
+
+
+PROGRAM="${0##*/}"
+COMMAND="$1"
+
+[[ $# -eq 0 ]] && cmd_usage && exit 0
+
+case "$1" in
+    help|--help) shift;			cmd_usage "$@" ;;
+    version|--version) shift;	cmd_version "$@" ;;
+    init) shift;				cmd_init "$@" ;;
+esac
+
+[[ ! -e "${KEYCHAIN_PATH}" ]] && die "No keychain. Please run: $PROGRAM init"
+
+case "$1" in
+    ls|list) shift;				cmd_list "$@" ;;
+    add) shift;					cmd_add "$@" ;;
+    get) shift;					cmd_get "$@" ;;
+    edit) shift;				cmd_update "$@" ;;
+    rm) shift;					cmd_delete "$@" ;;
+    *) shift;					cmd_version "$@" ;;    
+esac
+
+cleanup
+
+exit 0
