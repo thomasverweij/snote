@@ -5,7 +5,7 @@ This script is basically a wrapper around the `security`.
 
 ## Usage
 
-`
+```txt
     snote init [-c]
         Initializes snote by creating a new keychain.
         Use -c to symlink keychain to iCloud documents.
@@ -25,4 +25,4 @@ This script is basically a wrapper around the `security`.
 
     snote rm path
         Remove note by name.
-`
+```
