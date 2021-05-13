@@ -1,7 +1,7 @@
 # snote
 
 Create secure notes in the macOS keychain.
-This script is basically a wrapper around the `security`.
+This script is basically a wrapper around the `security` command.
 
 ## Usage
 
