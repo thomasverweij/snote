@@ -90,7 +90,6 @@ _EOF
 
 cmd_init() {
     [[ -e "${KEYCHAIN_PATH}" ]] && die "snote already initialized."
-    mkdir -p ~/.snote
     read -r -p "Enter password: " PASSWORD
     [[ ! -z $PASSWORD  ]] || die "No password"
     NEW_KEYCHAIN=~/.snote/snote.keychain
@@ -98,7 +97,8 @@ cmd_init() {
     && mkdir -p $ICLOUD_PATH \
     && NEW_KEYCHAIN=${ICLOUD_PATH}/snote.keychain 
     security create-keychain -p "$PASSWORD" "$NEW_KEYCHAIN" && echo "success"
-    [[ "${1}" == "-c" ]] && ln -s "$NEW_KEYCHAIN" "$KEYCHAIN_PATH"
+    [[ "${1}" == "-c" ]] && ln -s "$ICLOUD_PATH" ~/.snote
+    mkdir -p ~/.snote
     exit 0
 }
 
