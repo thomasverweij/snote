@@ -15,13 +15,13 @@ snote ls [folder]
     Optionally specify a folder name to list only notes in folder.
 
 snote add name
-    Add note by name. Uses \$EDITOR to provide content.
+    Add note by name. Uses $EDITOR to provide content.
 
 snote get name
     Get note by path.
 
 snote edit name
-    Edit note with \$EDITOR.
+    Edit note with $EDITOR.
 
 snote rm path
     Remove note by name.

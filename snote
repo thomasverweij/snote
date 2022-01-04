@@ -38,7 +38,7 @@ _EOF
 note_exists() {
     ( 
         security find-generic-password -a '' -C note -s "${1}" -w "$KEYCHAIN_PATH" &>/dev/null \
-        && true
+        && true 
     ) \
     || false 
 }
@@ -103,7 +103,7 @@ cmd_init() {
 }
 
 cmd_add() {
-    [[ "$#" -eq 0 ]] && die "Please provide a name"
+    [[ "$#" -eq 0 ]] && die "No name provided"
     note_exists "${1}" && die "Note already exists"
 
     TMPFILE=$(mktemp ${EDITOR_DIR}/note.XXXXX) || exit 1
@@ -113,14 +113,19 @@ cmd_add() {
     security add-generic-password -a '' -C note -D 'secure note' -s "${1}" -w "${NOTE}" "$KEYCHAIN_PATH" \
     || die "Note already exists"
     rm $TMPFILE
-    note_exists "${1}" && echo "${1} has been created."
+    note_exists "${1}" && echo "'${1}' has been created."
 }
 
-cmd_list() {
+
+cmd_list_normal() {
     security dump-keychain "$KEYCHAIN_PATH" 2>/dev/null \
     | grep svce \
     | cut -d '"' -f 4 \
-    | maybe_list_folder "${1}" \
+    | maybe_list_folder "${1}" 
+}
+
+cmd_list_tree() {
+    cmd_list_normal "${1}" \
     | tree --fromfile --noreport -C \
     | sed '1 s/^.*$/Notes/'
 }
@@ -148,11 +153,11 @@ cmd_update() {
 
 cmd_delete() {
     ( [[ "$#" -eq 0 ]] || ! note_exists ${1} ) \
-    && die "Note not found."
+    && die "Note not found"
 
     yesno "Would you like to delete note '${1}'?" \
     && (
-        security delete-generic-password -a '' -C note -l ${1} &>/dev/null \
+        security delete-generic-password -a '' -C note -l "${1}" "$KEYCHAIN_PATH" &>/dev/null \
         || die "Note not found"
     ) \
     && echo "${1} has been deleted."
@@ -174,12 +179,13 @@ esac
 [[ ! -e "${KEYCHAIN_PATH}" ]] && die "No keychain. Please run: $PROGRAM init"
 
 case "$1" in
-    ls|list) shift;				cmd_list "$@" ;;
+    ls|list) shift;				cmd_list_tree "$@" ;;
+    comp) shift;				cmd_list_normal "$@" ;;
     add) shift;					cmd_add "$@" ;;
     get) shift;					cmd_get "$@" ;;
     edit) shift;				cmd_update "$@" ;;
     rm) shift;					cmd_delete "$@" ;;
-    *) shift;					cmd_version "$@" ;;    
+    *) shift;					die "Unsupported command" ;;    
 esac
 
 cleanup
